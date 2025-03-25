@@ -51,7 +51,7 @@ def main():
     try:
         print("Choose operation:")
         print("1. Process event audio")
-        print("2. Process dialogue files")  # Modified choice
+        print("2. Process dialogue files (not working)")  # Modified choice
 
         main_choice = input("Enter 1 or 2: ")
 
