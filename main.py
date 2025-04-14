@@ -29,7 +29,7 @@ def select_directories_and_process(move_back, specific_json_folder=None):
         logging.debug("JSON directory selection canceled.")
         return
 
-    wem_dir = select_directory(title="Select WEM Directory (Bates\\Content\\WwiseStaged)", initialdir=os.path.join("Bates", "Content", "WwiseStaged"))
+    wem_dir = select_directory(title="Select WEM/WwiseStaged Directory (Bates\\Content)", initialdir=os.path.join("Bates", "Content", "WwiseStaged"))
     if not wem_dir:
         logging.debug("WEM directory selection canceled.")
         return
@@ -56,9 +56,9 @@ def main():
         main_choice = input("Enter 1 or 2: ")
 
         if main_choice == "1":
-            print("  Process event audio:")
-            print("   1. Unobfuscate .wem files from Bates\\Content\\WwiseAudio\\Events (DebugName -> Output)")
-            print("   2. Obfuscate .wem files (MediaPathName -> Output)")
+            print("  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel\n\n  Process event audio:")
+            print("   1. Unobfuscate .wem files from Bates\\Content\\WwiseAudio\\Events")
+            print("   2. Obfuscate .wem files")
             event_audio_choice = input("   Enter 1 or 2: ")
             select_event_audio_operation(event_audio_choice)
         elif main_choice == "2":
