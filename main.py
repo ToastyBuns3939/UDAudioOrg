@@ -11,7 +11,7 @@ def select_event_audio_operation(operation_choice):
         select_directories_and_process(True)
     else:
         print("Invalid choice for event audio processing.")
-
+        
 def select_directories_and_process(move_back, specific_json_folder=None):
     """Opens directory selection dialogs and processes the chosen directories."""
     default_json_dir = os.path.join("Bates", "Content", "WwiseAudio")
@@ -23,7 +23,7 @@ def select_directories_and_process(move_back, specific_json_folder=None):
     if not json_dir:
         return
 
-    wem_dir = select_directory(title="Select WEM/WwiseStaged Directory (Bates\\Content)", initialdir=os.path.join("Bates", "Content", "WwiseStaged"))
+    wem_dir = select_directory(title="Select WEM/WwiseStaged Directory", initialdir=os.path.join("Bates", "Content", "WwiseStaged"))
     if not wem_dir:
         return
 
@@ -39,7 +39,7 @@ def main():
     configure_logger()
     try:
         while True:
-            print("  UD REMAKE event audio tool\n\n  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel.\n\n   Unobfuscation guide:\n   1. Select Bates\\Content\\WwiseAudio\\Events\n   2. Select Bates\\Content\\WwiseStaged\n   3. Select export directory\n==========================================================================\n   Obfuscation guide:\n   1. Select Bates\\Content\\WwiseAudio\\Events\n   2. Select Obfuscation export directory\n   3. Select export directory\n==========================================================================\n\n  Process event audio:")
+            print("  UD REMAKE event audio tool\n\n  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel.\n\n   Unobfuscation guide:\n   1. Select Bates\\Content\\WwiseAudio\\Events\n   2. Select Bates\\Content\\WwiseStaged\n   3. Select export directory\n==========================================================================\n   Obfuscation guide:\n   1. Run Unobfuscation first to generate the mapping file\n   2. Select previous unobfuscation export directory\n   3. Select export directory\n==========================================================================\n\n  Process event audio:")
             print("   1. Unobfuscate .wem files from Bates\\Content\\WwiseAudio\\Events")
             print("   2. Obfuscate .wem files")
             print("   3. Exit")
