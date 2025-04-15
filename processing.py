@@ -1,9 +1,9 @@
 import json
 import os
-from utils import copy_file_with_logging, show_message
 import logging
+from utils import copy_file_with_logging
 
-def process_audio_events(json_file, wem_dir, output_dir, move_back=False):
+def process_audio_events(json_file, wem_dir, output_dir, move_back=False, error_list=None):
     """Copies audio files based on DebugName and MediaPathName with logging."""
     logging.info(f"Processing: {json_file}")
     try:
@@ -29,23 +29,33 @@ def process_audio_events(json_file, wem_dir, output_dir, move_back=False):
                                     output_filename = f"{os.path.splitext(debug_name_base)[0]}{original_extension}"
                                     dest_path = os.path.join(output_dir, os.path.dirname(debug_name), output_filename)
 
-                                copy_file_with_logging(source_path, dest_path)
+                                success = copy_file_with_logging(source_path, dest_path)
+                                if not success and move_back and error_list is not None:
+                                    error_list.append(source_path)
 
     except FileNotFoundError:
-        show_message("Error", f"File not found: {json_file}", "error")
         logging.error(f"File not found: {json_file}")
     except json.JSONDecodeError:
-        show_message("Error", f"Invalid JSON format in {json_file}", "error")
         logging.error(f"Invalid JSON format in {json_file}")
     except Exception as e:
-        show_message("Error", f"An unexpected error occurred: {e}", "error")
         logging.error(f"An unexpected error occurred: {e}")
 
 def process_directory(json_dir, wem_dir, output_dir, move_back=False, specific_folder=None):
     """Processes all JSON files within a directory (or specific subfolder)."""
+    error_list = [] if move_back else None
+
     for root, _, files in os.walk(json_dir):
         if specific_folder is None or os.path.basename(root) == specific_folder or specific_folder in root:
             for filename in files:
                 if filename.endswith(".json"):
                     json_path = os.path.join(root, filename)
-                    process_audio_events(json_path, wem_dir, output_dir, move_back)
+                    process_audio_events(json_path, wem_dir, output_dir, move_back, error_list)
+
+    if move_back and error_list:
+        # Save error log in the same directory as the script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        error_log_path = os.path.join(script_dir, "error_log.txt")
+        with open(error_log_path, "w", encoding="utf-8") as f:
+            for missing_file in error_list:
+                f.write(f"{missing_file}\n")
+        print(f"⚠ Some files were not found. See error log: {error_log_path}")
