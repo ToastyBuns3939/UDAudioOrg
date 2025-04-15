@@ -37,13 +37,10 @@ def show_message(title, message, level="info"):
         messagebox.showerror(title, message)
         logging.error(message)
 
-def configure_logger(log_file_name, level=logging.DEBUG):
-    """Configures the logging to write to a file."""
-    logging.basicConfig(filename=log_file_name, level=level, format='%(asctime)s - %(levelname)s - %(message)s')
-
-def close_and_remove_handlers():
-    """Closes and removes all logging handlers."""
-    handlers = logging.getLogger().handlers[:]
-    for handler in handlers:
-        handler.close()
-        logging.getLogger().removeHandler(handler)
+def configure_logger(level=logging.INFO):
+    """Configures logging to output to the console only."""
+    logging.basicConfig(
+        level=level,
+        format='[%(levelname)s] %(message)s',
+        handlers=[logging.StreamHandler()]
+    )

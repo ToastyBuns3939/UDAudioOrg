@@ -1,10 +1,7 @@
-# main.py
-import datetime
 import logging
 import os
-from utils import select_directory, show_message, configure_logger, close_and_remove_handlers
+from utils import select_directory, show_message, configure_logger
 from processing import process_directory
-from dialogue_organizer import organize_dialogue_json_files  # Import the new function
 
 def select_event_audio_operation(operation_choice):
     """Handles the selection and execution of event audio operations."""
@@ -16,27 +13,22 @@ def select_event_audio_operation(operation_choice):
         print("Invalid choice for event audio processing.")
 
 def select_directories_and_process(move_back, specific_json_folder=None):
-    """Opens directory selection dialogs and processes the chosen directories with logging."""
+    """Opens directory selection dialogs and processes the chosen directories."""
     default_json_dir = os.path.join("Bates", "Content", "WwiseAudio")
     initial_json_dir = default_json_dir
-    json_prompt = f"Select JSON Directory ({default_json_dir})"
     if specific_json_folder:
         initial_json_dir = os.path.join(default_json_dir, specific_json_folder)
-        json_prompt = f"Select JSON Directory ({os.path.join(default_json_dir, specific_json_folder)})"
 
-    json_dir = select_directory(title=json_prompt, initialdir=initial_json_dir)
+    json_dir = select_directory(title="Select JSON Directory", initialdir=initial_json_dir)
     if not json_dir:
-        logging.debug("JSON directory selection canceled.")
         return
 
     wem_dir = select_directory(title="Select WEM/WwiseStaged Directory (Bates\\Content)", initialdir=os.path.join("Bates", "Content", "WwiseStaged"))
     if not wem_dir:
-        logging.debug("WEM directory selection canceled.")
         return
 
     output_dir = select_directory(title="Select Output Directory")
     if not output_dir:
-        logging.debug("Output directory selection canceled.")
         return
 
     process_directory(json_dir, wem_dir, output_dir, move_back, specific_json_folder)
@@ -44,39 +36,16 @@ def select_directories_and_process(move_back, specific_json_folder=None):
     logging.info("Operation completed.")
 
 def main():
-    """Main function to handle command-line arguments and processing."""
-    log_file_name = f"wem_processor_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    configure_logger(log_file_name)
-    logging.info(f"Log file created: {log_file_name}")
+    """Main function to launch event audio processing directly."""
+    configure_logger()
     try:
-        print("Choose operation:")
-        print("1. Process event audio")
-        print("2. Process dialogue files (not working)")  # Modified choice
-
-        main_choice = input("Enter 1 or 2: ")
-
-        if main_choice == "1":
-            print("  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel\n\n  Process event audio:")
-            print("   1. Unobfuscate .wem files from Bates\\Content\\WwiseAudio\\Events")
-            print("   2. Obfuscate .wem files")
-            event_audio_choice = input("   Enter 1 or 2: ")
-            select_event_audio_operation(event_audio_choice)
-        elif main_choice == "2":
-            print("Process dialogue files:")
-            source_dialogue_dir = select_directory(title="Select Source Dialogue JSON Directory (Bates\\Content\\WwiseAudio\\ExternalSources)", initialdir=os.path.join("Bates", "Content", "WwiseAudio", "ExternalSources"))
-            if source_dialogue_dir:
-                output_dialogue_dir = select_directory(title="Select Output Dialogue JSON Directory")
-                if output_dialogue_dir:
-                    organize_dialogue_json_files(source_dialogue_dir, output_dialogue_dir)  # Call the function from dialogue_organizer.py
-                    show_message("Complete", "Dialogue file organization completed.")
-                    logging.info("Dialogue file organization completed.")
-        else:
-            print("Invalid choice.")
-
+        print("  UD REMAKE event audio tool\n\n  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel.\n\n   Unobfuscation guide:\n   1. Select Bates\\Content\\WwiseAudio\\Events\n   2. Select Bates\\Content\\WwiseStaged\n   3. Select export directory\n==========================================================================\n   Obfuscation guide:\n   1. Select Bates\\Content\\WwiseAudio\\Events\n   2. Select Obfuscation export directory\n   3. Select export directory\n==========================================================================\n\n  Process event audio:")
+        print("   1. Unobfuscate .wem files from Bates\\Content\\WwiseAudio\\Events")
+        print("   2. Obfuscate .wem files")
+        event_audio_choice = input("   Enter 1 or 2: ")
+        select_event_audio_operation(event_audio_choice)
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
-    finally:
-        close_and_remove_handlers()
 
 if __name__ == "__main__":
     main()
