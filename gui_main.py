@@ -31,7 +31,7 @@ class AudioToolGUI:
         self.json_dir = tk.StringVar()
         self.wem_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
-        self.operation_buttons = {}
+        self.operation_buttons = {}  # Store operation buttons for color updating
 
         self.add_logo("UntilDawnLogo.png")
         self.create_widgets()
