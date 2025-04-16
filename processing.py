@@ -1,7 +1,11 @@
 import json
 import os
 import logging
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import copy_file_with_logging
+
+MAX_WORKERS = multiprocessing.cpu_count() * 2
 
 def generate_mapping_from_json(json_dir, specific_folder=None):
     mapping = {}
@@ -26,7 +30,7 @@ def generate_mapping_from_json(json_dir, specific_folder=None):
                                             debug_name = media.get("DebugName")
                                             if media_path and debug_name:
                                                 if media_path in mapping and mapping[media_path] != debug_name:
-                                                    logging.warning(f"⚠ Duplicate mapping for {media_path}, skipping {debug_name}")
+                                                    logging.warning(f"⚠️ Duplicate mapping for {media_path}, skipping {debug_name}")
                                                 else:
                                                     mapping[media_path] = debug_name
                     except Exception as e:
@@ -34,13 +38,35 @@ def generate_mapping_from_json(json_dir, specific_folder=None):
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     map_path = os.path.join(script_dir, "wem_mapping.json")
+    
+    # Write the mapping to a JSON file with sorted keys
     with open(map_path, "w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2)
+        json.dump(mapping, f, indent=2, sort_keys=True)  # sort_keys=True ensures the keys are sorted
 
-    logging.info(f"\n✅ Mapping generated and saved to: {map_path}")
-    logging.info(f"🔢 Total JSON files processed: {total_files}")
-    logging.info(f"🎯 Unique mappings created: {len(mapping)}\n")
+    logging.info(f"✅ Mapping generated and saved to: {map_path} ({len(mapping)} entries from {total_files} file(s))")
+    
+def threaded_copy_tasks(copy_tasks):
+    success_count = 0
+    error_list = []
 
+    for _, dst in copy_tasks:
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_task = {executor.submit(copy_file_with_logging, src, dst): (src, dst) for src, dst in copy_tasks}
+
+        for future in as_completed(future_to_task):
+            src, _ = future_to_task[future]
+            try:
+                result = future.result()
+                if result:
+                    success_count += 1
+                else:
+                    error_list.append(f"File not found or failed: {src}")
+            except Exception as e:
+                error_list.append(f"Exception while copying {src}: {e}")
+
+    return success_count, error_list
 
 def unobfuscate_from_mapping(wem_dir, output_dir):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -53,8 +79,7 @@ def unobfuscate_from_mapping(wem_dir, output_dir):
     with open(map_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    success_count = 0
-    error_list = []
+    copy_tasks = []
 
     for media_path, debug_name in mapping.items():
         source_path = os.path.normpath(os.path.join(wem_dir, media_path))
@@ -62,22 +87,17 @@ def unobfuscate_from_mapping(wem_dir, output_dir):
         ext = os.path.splitext(media_path)[1]
         output_filename = f"{os.path.splitext(debug_base)[0]}{ext}"
         dest_path = os.path.normpath(os.path.join(output_dir, os.path.dirname(debug_name), output_filename))
+        copy_tasks.append((source_path, dest_path))
 
-        if copy_file_with_logging(source_path, dest_path):
-            success_count += 1
-        else:
-            error_list.append(f"File not found: {source_path}")
+    success_count, error_list = threaded_copy_tasks(copy_tasks)
 
-    logging.info(f"\n✅ Unobfuscation completed. Files copied: {success_count}")
+    logging.info(f"✅ Unobfuscation completed. Files copied: {success_count}")
     if error_list:
         log_path = os.path.join(script_dir, "error_log.log")
         with open(log_path, "w", encoding="utf-8") as f:
             for line in error_list:
                 f.write(f"{line}\n")
-        logging.warning(f"⚠ Some files could not be found. See: {log_path} ({len(error_list)} missing)")
-    else:
-        logging.info("🎉 All files copied successfully.\n")
-
+        logging.warning(f"⚠️ Some files could not be copied. See: {log_path}")
 
 def obfuscate_from_mapping(wem_dir, output_dir):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -90,25 +110,20 @@ def obfuscate_from_mapping(wem_dir, output_dir):
     with open(map_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    success_count = 0
-    error_list = []
+    copy_tasks = []
 
     for media_path, debug_name in mapping.items():
         wem_path_from_debug = debug_name.replace(".wav", ".wem")
         source_path = os.path.normpath(os.path.join(wem_dir, wem_path_from_debug))
         dest_path = os.path.normpath(os.path.join(output_dir, media_path))
+        copy_tasks.append((source_path, dest_path))
 
-        if copy_file_with_logging(source_path, dest_path):
-            success_count += 1
-        else:
-            error_list.append(f"File not found: {source_path}")
+    success_count, error_list = threaded_copy_tasks(copy_tasks)
 
-    logging.info(f"\n✅ Obfuscation completed. Files copied: {success_count}")
+    logging.info(f"✅ Obfuscation completed. Files copied: {success_count}")
     if error_list:
         log_path = os.path.join(script_dir, "error_log.log")
         with open(log_path, "w", encoding="utf-8") as f:
             for line in error_list:
                 f.write(f"{line}\n")
-        logging.warning(f"⚠ Some files could not be found. See: {log_path} ({len(error_list)} missing)")
-    else:
-        logging.info("🎉 All files copied successfully.\n")
+        logging.warning(f"⚠️ Some files could not be copied. See: {log_path}")

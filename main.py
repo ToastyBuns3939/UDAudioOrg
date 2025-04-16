@@ -10,7 +10,7 @@ def main():
             print("  UD REMAKE event audio tool\n\n  This tool assumes that you've already exported the Wwise folders in the WwiseAudio folder\n  as .json files and the WwiseStaged .wem audio files via Fmodel.")
             print("==========================================================================")
             print("   1. Generate mapping file from [Bates\\Content\\WwiseAudio\\Events]")
-            print("   2. Unobfuscate .wem files from [`]Bates\\Content\\WwiseStaged]")
+            print("   2. Unobfuscate .wem files from [Bates\\Content\\WwiseStaged]")
             print("   3. Obfuscate .wem files")
             print("   4. Exit")
             print("==========================================================================")
