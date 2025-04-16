@@ -2,7 +2,11 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog, messagebox, scrolledtext
 import logging
+import threading
 from processing import generate_mapping_from_json, unobfuscate_from_mapping, obfuscate_from_mapping
+
+# Super rough GUI freezing workaround. Everything works normally, but now the GUI locks up whenever it's in the middle of a process.
+
 
 # Centralized theme colors
 THEME = {
@@ -27,8 +31,7 @@ class AudioToolGUI:
         self.json_dir = tk.StringVar()
         self.wem_dir = tk.StringVar()
         self.output_dir = tk.StringVar()
-
-        self.operation_buttons = {}  # Store operation buttons for color updating
+        self.operation_buttons = {}
 
         self.add_logo("UntilDawnLogo.png")
         self.create_widgets()
@@ -57,7 +60,6 @@ class AudioToolGUI:
         btn_frame = tk.Frame(self.root, bg=THEME["bg"])
         btn_frame.pack()
 
-        # Operation buttons
         self.operation_buttons["mapping"] = self.create_button_with_tooltip(btn_frame, "📄 Generate Mapping from JSON", self.prepare_mapping_ui, 
                                                  "Generate wem_mapping.json file from Bates\\Content\\WwiseAudio\\Events.", THEME["button_bg"])
         self.operation_buttons["unobfuscate"] = self.create_button_with_tooltip(btn_frame, "🔓 Unobfuscate WEM Files", self.prepare_unobfuscate_ui, 
@@ -173,27 +175,32 @@ class AudioToolGUI:
 
     def start_processing(self):
         mode = self.operation_mode.get()
-        if mode == "mapping":
-            if not self.json_dir.get():
-                messagebox.showerror("Missing Input", "Please select the JSON directory.")
+
+        def task():
+            if mode == "mapping":
+                if not self.json_dir.get():
+                    messagebox.showerror("Missing Input", "Please select the JSON directory.")
+                    return
+                logging.info("📄 Generating mapping from JSON...")
+                generate_mapping_from_json(self.json_dir.get())
+            elif mode == "unobfuscate":
+                if not self.wem_dir.get() or not self.output_dir.get():
+                    messagebox.showerror("Missing Input", "Please select both WEM and output directories.")
+                    return
+                logging.info("🔓 Unobfuscating WEM files...")
+                unobfuscate_from_mapping(self.wem_dir.get(), self.output_dir.get())
+            elif mode == "obfuscate":
+                if not self.wem_dir.get() or not self.output_dir.get():
+                    messagebox.showerror("Missing Input", "Please select both WEM and output directories.")
+                    return
+                logging.info("🔒 Obfuscating WEM files...")
+                obfuscate_from_mapping(self.wem_dir.get(), self.output_dir.get())
+            else:
+                messagebox.showwarning("No Operation", "Please select an operation first.")
                 return
-            logging.info("📄 Generating mapping from JSON...")
-            generate_mapping_from_json(self.json_dir.get())
-        elif mode == "unobfuscate":
-            if not self.wem_dir.get() or not self.output_dir.get():
-                messagebox.showerror("Missing Input", "Please select both WEM and output directories.")
-                return
-            logging.info("🔓 Unobfuscating WEM files...")
-            unobfuscate_from_mapping(self.wem_dir.get(), self.output_dir.get())
-        elif mode == "obfuscate":
-            if not self.wem_dir.get() or not self.output_dir.get():
-                messagebox.showerror("Missing Input", "Please select both WEM and output directories.")
-                return
-            logging.info("🔒 Obfuscating WEM files...")
-            obfuscate_from_mapping(self.wem_dir.get(), self.output_dir.get())
-        else:
-            messagebox.showwarning("No Operation", "Please select an operation first.")
-        logging.info("✅ Operation completed.\n")
+            logging.info("✅ Operation completed.\n")
+
+        threading.Thread(target=task, daemon=True).start()
 
     class LogRedirector:
         def __init__(self, text_widget):
