@@ -4,7 +4,7 @@ This tool helps rename the obfuscated `.wem` audio files extracted from the **Un
 
 ## Prerequisites
 
-1.  **Game:** Until Dawn Remake (PC version assumed).
+1.  **Game:** Until Dawn Remake (Latest PC version assumed).
 2.  **FModel:** The **newest nightly build** is required. Older versions might not correctly extract the `Events` JSON data needed for mapping. Download from [FModel's GitHub Releases](https://github.com/4sval/FModel/releases) or [official website](https://fmodel.app/).
 3.  **Extracted Game Data:** You **must** have already used FModel to extract the following complete folders from the game's assets:
     * `[Your_FModel_Output_Path]\Bates\Content\WwiseAudio\Events` (Extract everything here as `.json` files)
