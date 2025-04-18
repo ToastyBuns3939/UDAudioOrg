@@ -1,5 +1,6 @@
 # UNTIL DAWN REMAKE Audio renamer
 
+The latest nightly build of FModel is required for a proper dump of the `Events` json files.
 This tool assumes that you already got both `WwiseAudio` and `WwiseStaged` folders extracted from Until Dawn via FModel.
 This tool also only works with extracted `.json` and `.wem` files from that game.
 
