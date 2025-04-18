@@ -18,11 +18,12 @@ Wwise audio often uses numeric IDs for filenames. This tool reads the `.json` fi
 
 
 1.  **Generate Mapping:**
+    * Run the tool's function responsible for processing the `Events` JSON files to generate a mapping file.
     * **Input:** Path to the `Bates\Content\WwiseAudio\Events` folder.
     * **Output:** This will generate a mapping file (e.g., `wem_mapping.json`) in the same folder as the script. This file will be needed by the script for both unbobfuscation and obfuscation process.
 
 2.  **Rename .wem Files (Unobfuscate):**
-
+    * Run the tool's function responsible for renaming.
     * **Input:**
         * Path to the `Bates\Content\WwiseStaged` folder (containing the original `.wem` files).
     * **Output:** A folder containing the renamed `.wem` files.
