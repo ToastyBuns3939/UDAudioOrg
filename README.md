@@ -4,8 +4,8 @@ This tool helps rename the obfuscated `.wem` audio files extracted from the **Un
 
 ## Prerequisites
 
-1.  **Game:** Until Dawn Remake (Latest PC version assumed).
-2.  **FModel:** The **newest nightly build** is required. Older versions might not correctly extract the `Events` JSON data needed for mapping. Download from [FModel's GitHub Releases](https://github.com/4sval/FModel/releases) or [official website](https://fmodel.app/).
+1.  **Game:** Until Dawn Remake (PC version assumed).
+2.  **FModel:** A **recent nightly build** is required. Older versions might not correctly extract the `Events` JSON data needed for mapping. Download from [FModel's GitHub Releases](https://github.com/4sval/FModel/releases) or [official website](https://fmodel.app/).
 3.  **Extracted Game Data:** You **must** have already used FModel to extract the following complete folders from the game's assets:
     * `[Your_FModel_Output_Path]\Bates\Content\WwiseAudio\Events` (Extract everything here as `.json` files)
     * `[Your_FModel_Output_Path]\Bates\Content\WwiseStaged` (Contains `.wem` audio files with random ID names)
@@ -18,12 +18,11 @@ Wwise audio often uses numeric IDs for filenames. This tool reads the `.json` fi
 
 
 1.  **Generate Mapping:**
-    * Run the tool's function responsible for processing the `Events` JSON files to generate a mapping file.
     * **Input:** Path to the `Bates\Content\WwiseAudio\Events` folder.
-    * **Output:** This will generate a mapping file (e.g., `wem_mapping.json`) in the same folder as the script. This file will be needed by the script for both unbobfuscation and obfuscation process.
+    * **Output:** This will typically generate a mapping file (e.g., `wem_mapping.json`).
 
 2.  **Rename .wem Files (Unobfuscate):**
-    * Run the tool's function responsible for renaming.
+
     * **Input:**
         * Path to the `Bates\Content\WwiseStaged` folder (containing the original `.wem` files).
     * **Output:** A folder containing the renamed `.wem` files.
@@ -38,4 +37,3 @@ Wwise audio often uses numeric IDs for filenames. This tool reads the `.json` fi
 
 * This tool is specifically designed for `.json` and `.wem` files extracted from the **Until Dawn Remake** via **FModel**. It will likely not work for other games or extraction methods.
 * The accuracy of the renaming depends entirely on the quality and completeness of the extracted `Events` JSON data from FModel.
-* Do note that some `.wem` files extracted might be corrupted due to the work in progress nature of **FModel**

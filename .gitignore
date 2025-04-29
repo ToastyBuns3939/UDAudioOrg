@@ -173,3 +173,7 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 wem_mapping.json
+ps4_wem_list.json
+ps4_wem_duplicates.json
+ps4_wem_analysis.json
+ps4_wem_analysis.xlsx
