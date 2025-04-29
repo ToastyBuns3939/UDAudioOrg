@@ -10,12 +10,21 @@ MAX_WORKERS = multiprocessing.cpu_count() * 2
 
 def generate_mapping_from_json(json_dir, specific_folder=None):
     """
-    Generates a mapping from PC version JSON files to Wwise IDs and DebugNames.
+    Generates a mapping from PC version JSON files to Wwise IDs and DebugNames,
+    including the source JSON files (relative paths to the input json_dir) for each mapping.
     This is specifically for the PC version's obfuscated files.
     """
-    mapping = {}
+    mapping = {} # Structure will be {MediaPathName: {"DebugName": "...", "SourceJsons": [...]}}
     total_files = 0
     logging.info(f"Starting PC mapping generation from JSON directory: {json_dir}")
+
+    # The base path for relative paths will be the input json_dir
+    base_path_for_relative = os.path.normpath(json_dir)
+    # Ensure consistent separators and trailing slash for reliable comparison
+    if not base_path_for_relative.endswith(os.sep):
+        base_path_for_relative += os.sep
+
+
     for root, _, files in os.walk(json_dir):
         if specific_folder is None or os.path.basename(root) == specific_folder or specific_folder in root:
             for filename in files:
@@ -27,6 +36,12 @@ def generate_mapping_from_json(json_dir, specific_folder=None):
                         with open(json_path, 'r', encoding='utf-8') as f:
                             data = json.load(f)
 
+                        # Calculate the relative path for the source JSON using os.path.relpath
+                        relative_json_path = os.path.relpath(json_path, json_dir)
+                        # Normalize separators for consistency
+                        relative_json_path = relative_json_path.replace("\\", "/")
+
+
                         for event in data:
                             if "EventCookedData" in event and "EventLanguageMap" in event["EventCookedData"]:
                                 for lang_map in event["EventCookedData"]["EventLanguageMap"]:
@@ -35,11 +50,26 @@ def generate_mapping_from_json(json_dir, specific_folder=None):
                                             media_path = media.get("MediaPathName")
                                             debug_name = media.get("DebugName")
                                             if media_path and debug_name:
-                                                # Store mapping as Wwise ID -> DebugName
-                                                if media_path in mapping and mapping[media_path] != debug_name:
-                                                    logging.warning(f"⚠️ Duplicate mapping for {media_path}, skipping {debug_name}")
+                                                if media_path not in mapping:
+                                                    # New MediaPathName, create entry
+                                                    mapping[media_path] = {
+                                                        "DebugName": debug_name,
+                                                        "SourceJsons": [relative_json_path] # Store relative path
+                                                    }
+                                                    logging.debug(f"  - New mapping for {media_path}: {debug_name} from {relative_json_path}")
                                                 else:
-                                                    mapping[media_path] = debug_name
+                                                    # Existing MediaPathName
+                                                    # Add the current relative JSON path to the list if not already present
+                                                    if relative_json_path not in mapping[media_path]["SourceJsons"]:
+                                                         mapping[media_path]["SourceJsons"].append(relative_json_path)
+
+                                                    # Check for conflicting DebugNames
+                                                    if mapping[media_path]["DebugName"] != debug_name:
+                                                        logging.warning(f"⚠️ Conflicting DebugName for {media_path}: Found '{debug_name}' in {relative_json_path}, already mapped as '{mapping[media_path]['DebugName']}'")
+                                                        # Keep the latest DebugName found (or could choose first, or list them)
+                                                        mapping[media_path]["DebugName"] = debug_name
+                                                    logging.debug(f"  - Updated mapping for {media_path}: added {relative_json_path}")
+
                     except Exception as e:
                         logging.error(f"❌ Failed to process {json_path}: {e}")
 
@@ -48,7 +78,13 @@ def generate_mapping_from_json(json_dir, specific_folder=None):
 
     # Write the mapping to a JSON file with sorted keys
     with open(map_path, "w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2, sort_keys=True)  # sort_keys=True ensures the keys are sorted
+        # Sort the source JSON lists within each entry for consistent output
+        sorted_mapping = {}
+        for media_path, data in sorted(mapping.items()):
+             data["SourceJsons"] = sorted(data["SourceJsons"])
+             sorted_mapping[media_path] = data
+
+        json.dump(sorted_mapping, f, indent=2)
 
     logging.info(f"✅ PC mapping generated and saved to: {map_path} ({len(mapping)} entries from {total_files} file(s))")
 
@@ -82,7 +118,7 @@ def threaded_copy_tasks(copy_tasks):
 def unobfuscate_from_mapping(wem_dir, output_dir):
     """
     Unobfuscates WEM files using the PC version mapping.
-    Renames files from Wwise ID to DebugName.
+    Renames files from Wwise ID to DebugName. Reads new mapping structure.
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     map_path = os.path.join(script_dir, "wem_mapping.json")
@@ -97,7 +133,13 @@ def unobfuscate_from_mapping(wem_dir, output_dir):
     copy_tasks = []
 
     # Create copy tasks: source is Wwise ID path, destination is DebugName path
-    for media_path, debug_name in mapping.items():
+    # Iterate through the mapping, accessing DebugName from the nested structure
+    for media_path, map_data in mapping.items():
+        debug_name = map_data.get("DebugName") # Get DebugName from the nested object
+        if not debug_name:
+             logging.warning(f"⚠️ Missing DebugName for {media_path} in mapping, skipping.")
+             continue
+
         source_path = os.path.normpath(os.path.join(wem_dir, media_path))
         debug_base = os.path.basename(debug_name)
         ext = os.path.splitext(media_path)[1] # Use original extension
@@ -119,7 +161,7 @@ def unobfuscate_from_mapping(wem_dir, output_dir):
 def obfuscate_from_mapping(wem_dir, output_dir):
     """
     Obfuscates WEM files using the PC version mapping.
-    Renames files from DebugName back to Wwise ID.
+    Renames files from DebugName back to Wwise ID. Reads new mapping structure.
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
     map_path = os.path.join(script_dir, "wem_mapping.json")
@@ -134,8 +176,18 @@ def obfuscate_from_mapping(wem_dir, output_dir):
     copy_tasks = []
 
     # Create copy tasks: source is DebugName path, destination is Wwise ID path
-    # We need to invert the mapping for this operation
-    inverted_mapping = {v: k for k, v in mapping.items()}
+    # Need to build an inverted mapping from the new structure: DebugName -> MediaPathName
+    inverted_mapping = {}
+    for media_path, map_data in mapping.items():
+        debug_name = map_data.get("DebugName")
+        if debug_name:
+             # If multiple MediaPaths map to the same DebugName, the last one processed wins
+             if debug_name in inverted_mapping:
+                 logging.warning(f"⚠️ Duplicate DebugName '{debug_name}' found in mapping. Keeping mapping to '{media_path}' and discarding mapping to '{inverted_mapping[debug_name]}'.")
+             inverted_mapping[debug_name] = media_path
+        else:
+             logging.warning(f"⚠️ Missing DebugName for {media_path} in mapping, cannot create inverted mapping entry.")
+
 
     for debug_name, media_path in inverted_mapping.items():
         # The source file will have the debug name, potentially with .wem extension
@@ -277,9 +329,7 @@ def find_ps4_wem_duplicates(ps4_wem_dir):
 
             # Add the entry to the categorized_files structure
             # The value for the filename will now be an object containing paths and all_categories
-            # --- NEW DEBUG LOG HERE ---
             logging.debug(f"  - Attempting to add path '{relative_path}' for filename '{filename}' to category '{matched_category}'")
-            # --------------------------
             if filename not in categorized_files[matched_category]:
                  logging.debug(f"    - Creating new entry for filename '{filename}' in category '{matched_category}'")
                  categorized_files[matched_category][filename] = {
