@@ -2,7 +2,7 @@ import json
 import os
 import logging
 import multiprocessing
-from collections import defaultdict
+from collections import defaultdict # Import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils import copy_file_with_logging
 
