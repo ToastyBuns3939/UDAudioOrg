@@ -1,39 +1,79 @@
 # Until Dawn Remake - Audio Renamer Tool
 
-This tool helps rename the obfuscated `.wem` audio files extracted from the **Until Dawn Remake** using FModel, giving them meaningful names based on their in-game events.
+This tool helps manage `.wem` audio files extracted from the **Until Dawn Remake**. It currently supports renaming obfuscated PC files, analyzing files from PS4 extractions, and automatically converting analysis results to Excel files.
 
 ## Prerequisites
 
-1.  **Game:** Until Dawn Remake (PC version assumed).
-2.  **FModel:** A **recent nightly build** is required. Older versions might not correctly extract the `Events` JSON data needed for mapping. Download from [FModel's GitHub Releases](https://github.com/4sval/FModel/releases) or [official website](https://fmodel.app/).
-3.  **Extracted Game Data:** You **must** have already used FModel to extract the following complete folders from the game's assets:
-    * `[Your_FModel_Output_Path]\Bates\Content\WwiseAudio\Events` (Extract everything here as `.json` files)
-    * `[Your_FModel_Output_Path]\Bates\Content\WwiseStaged` (Contains `.wem` audio files with random ID names)
+1. **Game:** Until Dawn Remake (PC or PS4 version).
+
+2. **Extraction Tool:** A tool capable of extracting game assets, such as **FModel** for PC (a **recent nightly build** is required for PC JSON data) or other tools for PS4 assets.
+
+3. **Extracted Game Data:** You **must** have already extracted the relevant audio files and/or metadata.
+
+4. **Python Libraries:** For the Excel conversion, you need `pandas` and `openpyxl` (`pip install pandas openpyxl`).
 
 ## How it Works
 
-Wwise audio often uses numeric IDs for filenames. This tool reads the `.json` files in the `Events` folder (extracted by FModel) to create a map between these IDs and their descriptive event names. It then uses this map to rename the corresponding `.wem` files found in the `WwiseStaged` folder.
+* **PC Version:** Wwise audio often uses numeric IDs for filenames. This tool reads `.json` files (extracted by FModel from the PC version's `Events` folder) to create a map between these IDs and their descriptive event names. It also records the source JSON file(s) where each mapping was found, listed as paths relative to the **input JSON directory** provided by the user. Generating this mapping automatically creates a corresponding Excel file with a separate sheet for each top-level source JSON folder. The "Source JSON File" column in this Excel output will automatically wrap text to display multiple source files on separate lines within the cell. It then uses this map to rename the corresponding `.wem` files found in the `WwiseStaged` folder. It can also revert this process.
+
+* **PS4 Version:** The PS4 version's files may already have descriptive names within their folder structure. This tool can analyze **all** `.wem` files within a specified directory, listing their paths relative to the chosen root directory and indicating which ones appear in multiple locations. Files are categorized by common folder prefixes (Act\_, Ambience\_, Choices, Butterfly_effect_bank, Foley\_, Footsteps\_, Frontend, Generic\_, Global\_, music\_, Sequences\_, SFX\_, VFX\_, Wendigo\_). This analysis automatically generates a JSON file and converts it to a multi-sheet Excel file.
+
+* **JSON to Excel Conversion:** Separate functions are available to convert the PC mapping and PS4 analysis JSON outputs into more user-friendly Excel formats.
 
 ## Usage Guide
 
+Run the `main.py` script from your terminal. Follow the on-screen prompts to select the desired operation.
 
-1.  **Generate Mapping:**
-    * **Input:** Path to the `Bates\Content\WwiseAudio\Events` folder.
-    * **Output:** This will typically generate a mapping file (e.g., `wem_mapping.json`).
+1. **Generate Mapping (PC) and Export to Excel:**
 
-2.  **Rename .wem Files (Unobfuscate):**
+   * **Input:** Path to the PC version's `Bates\Content\WwiseAudio\Events` folder (extracted as `.json`).
 
-    * **Input:**
-        * Path to the `Bates\Content\WwiseStaged` folder (containing the original `.wem` files).
-    * **Output:** A folder containing the renamed `.wem` files.
+   * **Output:**
 
-3.  **Revert Renaming (Obfuscate):**
-    * Run the tool's function responsible for reverting names.
-    * **Input:**
-        * Path to the folder containing the *renamed* `.wem` files.
-    * **Output:** A folder containing the `.wem` files renamed back to their original IDs (or renames them in place).
+     * Generates `wem_mapping.json` in the script's directory. This file will contain a mapping of Wwise IDs to DebugNames, and for each entry, a list of the source JSON files where that mapping was found (relative to the input JSON directory).
+
+     * **Automatically** generates `wem_mapping.xlsx` containing the same information, with a separate sheet for each top-level source JSON folder. Each row will include the Wwise ID, DebugName, a list of **all** Source JSON files for that mapping (using line breaks and automatically wrapping text), and a column named "Group" listing all the Excel sheet names where that Wwise ID/DebugName mapping appears (using commas).
+
+2. **Rename .wem Files (Unobfuscate PC):**
+
+   * **Prerequisite:** Generate the PC mapping first (Option 1).
+
+   * **Input:** Path to the PC version's `Bates\Content\WwiseStaged` folder (containing the original `.wem` files).
+
+   * **Output:** A folder containing the renamed `.wem` files.
+
+3. **Revert Renaming (Obfuscate PC):**
+
+   * **Prerequisite:** Generate the PC mapping first (Option 1).
+
+   * **Input:** Path to the folder containing the *renamed* PC `.wem` files.
+
+   * **Output:** A folder containing the `.wem` files renamed back to their original IDs.
+
+4. **Analyze PS4 WEM directory and Export to Excel:**
+
+   * **Input:** Path to the root directory containing the PS4 `.wem` files (e.g., `UD_PS4_WEM`).
+
+   * **Output:**
+
+     * Generates `ps4_wem_list.json` (listing all files with relative paths).
+
+     * Generates `ps4_wem_analysis.json` (listing **all** `.wem` files found, their respective paths *relative to the input directory*, and a list of *all* categories the file appears in, organized by categories like "Act\_", "Ambience\_", etc., with "Other" listed last) in the script's directory.
+
+     * **Automatically** generates `ps4_wem_analysis.xlsx` containing the same information, with each category of files placed in a separate worksheet. Each row in the Excel file will include a column listing all the categories that specific filename was found in.
+
+5. **Exit**
+
+To convert the JSON files to Excel manually (if needed):
+
+* Run the `json_to_excel.py` script from your terminal (`python json_to_excel.py`). This script can be modified to specify which JSON file to convert if needed, or you can adjust the default filenames within the script.
 
 ## Important Notes
 
-* This tool is specifically designed for `.json` and `.wem` files extracted from the **Until Dawn Remake** via **FModel**. It will likely not work for other games or extraction methods.
-* The accuracy of the renaming depends entirely on the quality and completeness of the extracted `Events` JSON data from FModel.
+* The PC mapping and renaming functions are specifically designed for `.json` and `.wem` files extracted from the **Until Dawn Remake PC** via **FModel**.
+
+* The PS4 analysis function is a general utility to inventory and categorize all `.wem` files within a directory structure.
+
+* The accuracy of PC renaming depends entirely on the quality and completeness of the extracted `Events` JSON data from FModel.
+
+* Excel sheet names have a character limit (typically 31 characters) and cannot contain certain characters. The script attempts to sanitize category names for use as sheet names.
