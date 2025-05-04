@@ -5,14 +5,17 @@ import logging
 from collections import defaultdict
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.dimensions import ColumnDimension # Import ColumnDimension
 
 def convert_duplicates_json_to_excel(json_path="ps4_wem_analysis.json", excel_path="ps4_wem_analysis.xlsx"):
     """
     Converts the ps4_wem_analysis.json file into an Excel (.xlsx) file,
     with each category of files in a separate worksheet.
     Includes a column listing all categories the file appears in.
-    Applies wrap text and middle vertical alignment to all data cells, and auto-sizes rows and columns.
-    Freezes the header row and column A.
+    Aggregates 'Relative Path' into a single cell with line breaks per filename.
+    Sorts by 'Filename', applies wrap text and middle vertical alignment to all data cells,
+    auto-sizes rows and columns (shared across sheets), and freezes the header row and column A.
+    Adds filters to the header row.
 
     Args:
         json_path (str): The path to the input JSON file.
@@ -45,6 +48,8 @@ def convert_duplicates_json_to_excel(json_path="ps4_wem_analysis.json", excel_pa
     try:
         # Use ExcelWriter to write to multiple sheets
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            all_sheets_dataframes = {} # Store DataFrames for calculating shared column widths
+
             for category, filenames_data in data.items():
                 # Prepare data for pandas DataFrame for the current category
                 excel_data_category = []
@@ -56,45 +61,64 @@ def convert_duplicates_json_to_excel(json_path="ps4_wem_analysis.json", excel_pa
                     # Convert the list of all categories to a comma-separated string for the Excel cell
                     all_categories_str = ", ".join(all_categories)
 
-                    for path in paths:
-                        excel_data_category.append({
-                            "Filename": filename,
-                            "Relative Path": path,
-                            "All Categories": all_categories_str # Add the new column
-                        })
+                    # --- Join all paths into a single string with line breaks ---
+                    relative_paths_str = "\n".join(paths)
+                    # ---------------------------------------------------------
+
+                    # Append a single row for this filename
+                    excel_data_category.append({
+                        "Filename": filename,
+                        "Relative Path": relative_paths_str, # Use the aggregated string
+                        "All Categories": all_categories_str # Add the new column
+                    })
 
                 if excel_data_category:
                     # Create a pandas DataFrame for the current category
                     df_category = pd.DataFrame(excel_data_category)
+
+                    # --- Sort by 'Filename' (since each row is now a unique filename) ---
+                    df_category = df_category.sort_values(by="Filename", ascending=True)
+                    # -------------------------------------------------------------------
 
                     # Sanitize category name for sheet name (Excel sheet names have limits)
                     sheet_name = category.replace(":", "_").replace("/", "_").replace("\\", "_")[:31] # Limit to 31 chars
                     df_category.to_excel(writer, index=False, sheet_name=sheet_name)
                     logging.info(f"  - Wrote category '{category}' to sheet '{sheet_name}' in {excel_path}")
 
-                    # --- Apply Formatting and Freezing ---
+                    all_sheets_dataframes[sheet_name] = df_category # Store DataFrame
+
+            # --- Apply Formatting, Freezing, Auto-sizing, and Filters after all sheets are written ---
+            if all_sheets_dataframes:
+                # Calculate shared column widths across all sheets
+                max_widths = defaultdict(int)
+                for sheet_name, df in all_sheets_dataframes.items():
+                     # Include header row width in calculation
+                     for i, col in enumerate(df.columns):
+                         max_widths[i] = max(max_widths[i], len(col))
+                         for row_idx in range(len(df)):
+                             cell_value = str(df.iloc[row_idx, i])
+                             # Estimate width for wrapped text - a simple approach is to count characters
+                             # A more complex approach would involve considering line breaks and font size
+                             max_widths[i] = max(max_widths[i], len(cell_value))
+
+
+                # Apply formatting to each sheet
+                for sheet_name, df in all_sheets_dataframes.items():
                     worksheet = writer.sheets[sheet_name]
 
                     # Apply Wrap Text and Middle Alignment to all data cells (skipping header)
                     for row in worksheet.iter_rows(min_row=2):
                         for cell in row:
-                            cell.alignment = Alignment(wrap_text=True, vertical='center') # Added vertical='center'
+                            cell.alignment = Alignment(wrap_text=True, vertical='center')
 
                     # Auto-size rows (skipping header)
                     for row_idx in range(2, worksheet.max_row + 1):
                          worksheet.row_dimensions[row_idx].auto_size = True
 
-                    # Auto-size columns
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = get_column_letter(column[0].column)
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = (max_length + 2) * 1.2 # Add some padding
+                    # Apply shared auto-size columns
+                    for i, col in enumerate(df.columns):
+                        column_letter = get_column_letter(i + 1) # +1 because openpyxl is 1-indexed
+                        adjusted_width = (max_widths[i] + 2) * 1.2 # Add some padding
                         # Limit max width to avoid extremely wide columns
                         if adjusted_width > 100:
                             adjusted_width = 100
@@ -102,11 +126,16 @@ def convert_duplicates_json_to_excel(json_path="ps4_wem_analysis.json", excel_pa
 
                     # Freeze the header row and column A
                     worksheet.freeze_panes = 'B2'
-                    logging.debug(f"  - Applied wrap text, middle alignment, auto-size rows/columns, and frozen panes in sheet '{sheet_name}'")
-                    # -----------------------------------------
 
-                else:
-                     logging.info(f"  - No data for category '{category}', skipping sheet in {excel_path}.")
+                    # Add filters to the header row
+                    # Determine the range of cells for the filter
+                    filter_range = f"A1:{get_column_letter(len(df.columns))}{worksheet.max_row}"
+                    worksheet.auto_filter.ref = filter_range
+
+                    logging.debug(f"  - Applied formatting, auto-sizing, freezing, and filters in sheet '{sheet_name}'")
+
+            else:
+                 logging.info("  - No dataframes generated, skipping formatting.")
 
 
         logging.info(f"✅ Successfully converted {json_path} to {excel_path} with categories as sheets.")
@@ -125,8 +154,9 @@ def convert_mapping_json_to_excel(json_path="wem_mapping.json", excel_path="wem_
     Converts the wem_mapping.json file into an Excel (.xlsx) file,
     with each top-level source JSON folder in a separate worksheet.
     Includes MediaPathName, DebugName, all Source JSONs (with line breaks), and a list of sheets the entry appears on.
-    Applies wrap text and middle vertical alignment to all data cells, and auto-sizes rows and columns.
-    Freezes the header row and column A.
+    Sorts by 'DebugName', applies wrap text and middle vertical alignment to all data cells,
+    auto-sizes rows and columns (shared across sheets), and freezes the header row and column A.
+    Adds filters to the header row.
 
     Args:
         json_path (str): The path to the input JSON file (wem_mapping.json).
@@ -200,11 +230,12 @@ def convert_mapping_json_to_excel(json_path="wem_mapping.json", excel_path="wem_
                 "Group": appears_on_sheets_str # Renamed column to "Group"
             }
 
-
     try:
         # Use ExcelWriter to write to multiple sheets
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            # Sort sheet names alphabetically
+            all_sheets_dataframes = {} # Store DataFrames for calculating shared column widths
+
+            # Sort sheet names alphabetically and process each group
             for sheet_name in sorted(grouped_data_aggregated.keys()):
                 # Convert the dictionary of unique rows into a list of dictionaries for the DataFrame
                 excel_data_sheet = list(grouped_data_aggregated[sheet_name].values())
@@ -212,34 +243,49 @@ def convert_mapping_json_to_excel(json_path="wem_mapping.json", excel_path="wem_
                 if excel_data_sheet:
                     df_sheet = pd.DataFrame(excel_data_sheet)
 
+                    # --- Sort by 'DebugName' ---
+                    df_sheet = df_sheet.sort_values(by="DebugName", ascending=True)
+                    # -------------------------
+
                     # Sanitize sheet name (for actual Excel sheet name)
                     sanitized_sheet_name = sheet_name.replace(":", "_").replace("/", "_").replace("\\", "_")[:31] # Limit to 31 chars
                     df_sheet.to_excel(writer, index=False, sheet_name=sanitized_sheet_name)
                     logging.info(f"  - Wrote data for source folder '{sheet_name}' to sheet '{sanitized_sheet_name}' in {excel_path}")
 
-                    # --- Apply Formatting and Freezing ---
-                    worksheet = writer.sheets[sanitized_sheet_name]
+                    all_sheets_dataframes[sanitized_sheet_name] = df_sheet # Store DataFrame using sanitized name
+
+            # --- Apply Formatting, Freezing, Auto-sizing, and Filters after all sheets are written ---
+            if all_sheets_dataframes:
+                # Calculate shared column widths across all sheets
+                max_widths = defaultdict(int)
+                # Iterate through the stored dataframes to find max widths
+                for sheet_name, df in all_sheets_dataframes.items():
+                     # Include header row width in calculation
+                     for i, col in enumerate(df.columns):
+                         max_widths[i] = max(max_widths[i], len(col))
+                         for row_idx in range(len(df)):
+                             cell_value = str(df.iloc[row_idx, i])
+                             # Estimate width for wrapped text
+                             max_widths[i] = max(max_widths[i], len(cell_value))
+
+
+                # Apply formatting to each sheet
+                for sheet_name, df in all_sheets_dataframes.items():
+                    worksheet = writer.sheets[sheet_name]
 
                     # Apply Wrap Text and Middle Alignment to all data cells (skipping header)
                     for row in worksheet.iter_rows(min_row=2):
                         for cell in row:
-                            cell.alignment = Alignment(wrap_text=True, vertical='center') # Added vertical='center'
+                            cell.alignment = Alignment(wrap_text=True, vertical='center')
 
                     # Auto-size rows (skipping header)
                     for row_idx in range(2, worksheet.max_row + 1):
                          worksheet.row_dimensions[row_idx].auto_size = True
 
-                    # Auto-size columns
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = get_column_letter(column[0].column)
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = (max_length + 2) * 1.2 # Add some padding
+                    # Apply shared auto-size columns
+                    for i, col in enumerate(df.columns):
+                        column_letter = get_column_letter(i + 1) # +1 because openpyxl is 1-indexed
+                        adjusted_width = (max_widths[i] + 2) * 1.2 # Add some padding
                         # Limit max width to avoid extremely wide columns
                         if adjusted_width > 100:
                             adjusted_width = 100
@@ -247,11 +293,17 @@ def convert_mapping_json_to_excel(json_path="wem_mapping.json", excel_path="wem_
 
                     # Freeze the header row and column A
                     worksheet.freeze_panes = 'B2'
-                    logging.debug(f"  - Applied wrap text, middle alignment, auto-size rows/columns, and frozen panes in sheet '{sanitized_sheet_name}'")
-                    # -----------------------------------------
 
-                else:
-                     logging.info(f"  - No data for source folder '{sheet_name}', skipping sheet in {excel_path}.")
+                    # Add filters to the header row
+                    # Determine the range of cells for the filter
+                    filter_range = f"A1:{get_column_letter(len(df.columns))}{worksheet.max_row}"
+                    worksheet.auto_filter.ref = filter_range
+
+                    logging.debug(f"  - Applied formatting, auto-sizing, freezing, and filters in sheet '{sanitized_sheet_name}'")
+
+
+            else:
+                 logging.info("  - No dataframes generated, skipping formatting.")
 
 
         logging.info(f"✅ Successfully converted {json_path} to {excel_path} with source folders as sheets.")
@@ -259,7 +311,7 @@ def convert_mapping_json_to_excel(json_path="wem_mapping.json", excel_path="wem_
 
     except ImportError:
         logging.error("❌ Error: 'openpyxl' library not found. Please install it (`pip install openpyxl`) to write .xlsx files.")
-        print("Error: 'openpyxl' library not found. Please install it (`pip install openpyxl`) to write .xlsx files.")
+        print("Error: 'openpyxl' library not found. Please install it (`pip pyxl`) to write .xlsx files.")
     except Exception as e:
         logging.error(f"❌ An error occurred while writing to Excel file {excel_path}: {e}")
         print(f"An error occurred while writing to Excel file {excel_path}: {e}")
