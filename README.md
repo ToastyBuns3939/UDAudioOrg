@@ -1,6 +1,6 @@
 # Until Dawn Remake - Audio Renamer Tool
 
-This tool helps manage `.wem` audio files extracted from the **Until Dawn Remake**. It currently supports renaming obfuscated PC files, analyzing files from PS4 extractions, and automatically converting analysis results to Excel files.
+This tool helps manage `.wem` audio files extracted from the **Until Dawn Remake**. It currently supports renaming obfuscated PC files, analyzing files from PS4 extractions, and automatically converting PS4 analysis results to a multi-sheet Excel file.
 
 ## Prerequisites
 
@@ -14,25 +14,21 @@ This tool helps manage `.wem` audio files extracted from the **Until Dawn Remake
 
 ## How it Works
 
-* **PC Version:** Wwise audio often uses numeric IDs for filenames. This tool reads `.json` files (extracted by FModel from the PC version's `Events` folder) to create a map between these IDs and their descriptive event names. It also records the source JSON file(s) where each mapping was found, listed as paths relative to the **input JSON directory** provided by the user. Generating this mapping automatically creates a corresponding Excel file with a separate sheet for each top-level source JSON folder. The "Source JSON File" column in this Excel output will automatically wrap text to display multiple source files on separate lines within the cell. It then uses this map to rename the corresponding `.wem` files found in the `WwiseStaged` folder. It can also revert this process.
+* **PC Version:** Wwise audio often uses numeric IDs for filenames. This tool reads `.json` files (extracted by FModel from the PC version's `Events` folder) to create a map between these IDs and their descriptive event names. It then uses this map to rename the corresponding `.wem` files found in the `WwiseStaged` folder. It can also revert this process.
 
 * **PS4 Version:** The PS4 version's files may already have descriptive names within their folder structure. This tool can analyze **all** `.wem` files within a specified directory, listing their paths relative to the chosen root directory and indicating which ones appear in multiple locations. Files are categorized by common folder prefixes (Act\_, Ambience\_, Choices, Butterfly_effect_bank, Foley\_, Footsteps\_, Frontend, Generic\_, Global\_, music\_, Sequences\_, SFX\_, VFX\_, Wendigo\_). This analysis automatically generates a JSON file and converts it to a multi-sheet Excel file.
 
-* **JSON to Excel Conversion:** Separate functions are available to convert the PC mapping and PS4 analysis JSON outputs into more user-friendly Excel formats.
+* **JSON to Excel Conversion:** A separate script is provided to convert the PS4 analysis JSON output into a more user-friendly Excel format.
 
 ## Usage Guide
 
 Run the `main.py` script from your terminal. Follow the on-screen prompts to select the desired operation.
 
-1. **Generate Mapping (PC) and Export to Excel:**
+1. **Generate Mapping (PC):**
 
    * **Input:** Path to the PC version's `Bates\Content\WwiseAudio\Events` folder (extracted as `.json`).
 
-   * **Output:**
-
-     * Generates `wem_mapping.json` in the script's directory. This file will contain a mapping of Wwise IDs to DebugNames, and for each entry, a list of the source JSON files where that mapping was found (relative to the input JSON directory).
-
-     * **Automatically** generates `wem_mapping.xlsx` containing the same information, with a separate sheet for each top-level source JSON folder. Each row will include the Wwise ID, DebugName, a list of **all** Source JSON files for that mapping (using line breaks and automatically wrapping text), and a column named "Group" listing all the Excel sheet names where that Wwise ID/DebugName mapping appears (using commas).
+   * **Output:** Generates `wem_mapping.json` in the script's directory.
 
 2. **Rename .wem Files (Unobfuscate PC):**
 
@@ -50,13 +46,11 @@ Run the `main.py` script from your terminal. Follow the on-screen prompts to sel
 
    * **Output:** A folder containing the `.wem` files renamed back to their original IDs.
 
-4. **Analyze PS4 WEM directory and Export to Excel:**
+4. **Analyze PS4 WEM directory:**
 
    * **Input:** Path to the root directory containing the PS4 `.wem` files (e.g., `UD_PS4_WEM`).
 
    * **Output:**
-
-     * Generates `ps4_wem_list.json` (listing all files with relative paths).
 
      * Generates `ps4_wem_analysis.json` (listing **all** `.wem` files found, their respective paths *relative to the input directory*, and a list of *all* categories the file appears in, organized by categories like "Act\_", "Ambience\_", etc., with "Other" listed last) in the script's directory.
 
@@ -64,9 +58,9 @@ Run the `main.py` script from your terminal. Follow the on-screen prompts to sel
 
 5. **Exit**
 
-To convert the JSON files to Excel manually (if needed):
+To convert the `ps4_wem_analysis.json` file to Excel manually (if needed):
 
-* Run the `json_to_excel.py` script from your terminal (`python json_to_excel.py`). This script can be modified to specify which JSON file to convert if needed, or you can adjust the default filenames within the script.
+* Run the `json_to_excel.py` script from your terminal (`python json_to_excel.py`). This will create `ps4_wem_analysis.xlsx` in the same directory.
 
 ## Important Notes
 

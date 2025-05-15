@@ -2,11 +2,118 @@ import json
 import os
 import logging
 import multiprocessing
-from collections import defaultdict # Import defaultdict
+import subprocess # Import for running external commands
+import re # Import for parsing vgmstream output
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from utils import copy_file_with_logging
+from utils import copy_file_with_logging # Assuming utils.py exists with copy_file_with_logging
+
+# Attempt to import mutagen (still needed for other formats if used elsewhere, but not WEM duration with vgmstream)
+try:
+    from mutagen.oggvorbis import OggVorbis
+    MUTAGEN_AVAILABLE = True
+except ImportError:
+    # Mutagen is not strictly needed for WEM duration with vgmstream-cli,
+    # but keep the flag for potential future use or other file types.
+    logging.debug("Mutagen library not found. OGG duration reading functions may not work.")
+    MUTAGEN_AVAILABLE = False
+
 
 MAX_WORKERS = multiprocessing.cpu_count() * 2
+
+# Define path to external tool (assuming it's in the vgmstream-win64 subdirectory within the script folder)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+VGMSTREAM_DIR = os.path.join(SCRIPT_DIR, "vgmstream-win64") # Define the subdirectory
+VGMSTREAM_PATH = os.path.join(VGMSTREAM_DIR, "vgmstream-cli.exe") # Adjust executable name/path if needed
+
+# More Flexible Regex to find duration in vgmstream output
+# This looks for "play duration:", any characters non-greedily, then captures time within parentheses (MM:SS.ms or H:MM:SS.ms) followed by " seconds)"
+# Using \s+ to match one or more whitespace characters, and allowing any characters (.*?) before the time.
+DURATION_REGEX = re.compile(r"play duration:.*?\((\d+:\d{2}(:\d{2})?\.\d{3})\s*seconds\)")
+# Keeping the alternative regex just in case.
+ALT_DURATION_REGEX = re.compile(r"total samples:\s*\d+\s*\((\d+:\d{2}:\d{2}\.\d{3})\)")
+
+
+def run_command(command, cwd=None):
+    """Helper function to run an external command and capture output/errors."""
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True # Raise CalledProcessError if command returns non-zero exit code
+        )
+        logging.debug(f"Command successful: {' '.join(command)}")
+        if result.stdout:
+            logging.debug(f"Stdout: {result.stdout.strip()}")
+        if result.stderr:
+            logging.debug(f"Stderr: {result.stderr.strip()}")
+        return result.stdout # Return full stdout for parsing
+    except FileNotFoundError:
+        logging.error(f"❌ Error: Command not found. Make sure '{command[0]}' is in your PATH or script directory.")
+        return None
+    except subprocess.CalledProcessError as e:
+        logging.error(f"❌ Error running command: {' '.join(command)}")
+        logging.error(f"Return code: {e.returncode}")
+        if e.stdout:
+             logging.error(f"Stdout: {e.stdout.strip()}")
+        if e.stderr:
+             logging.error(f"Stderr: {e.stderr.strip()}")
+        return None # Return None to indicate failure
+    except Exception as e:
+        logging.error(f"❌ An unexpected error occurred while running command {' '.join(command)}: {e}")
+        return None # Return None to indicate failure
+
+
+def get_wem_duration_vgmstream(wem_file_path):
+    """
+    Gets the duration of a WEM file using vgmstream-cli.
+    Returns duration string (MM:SS.ms or H:MM:SS.ms) or "N/A" if failed.
+    """
+    logging.debug(f"Attempting to get duration for: {wem_file_path}") # Added debug log
+    if not os.path.exists(VGMSTREAM_PATH):
+        logging.error("❌ vgmstream-cli not found at expected location.") # Changed to error
+        return "N/A (vgmstream-cli not found at expected location)"
+    if not os.path.exists(wem_file_path):
+        logging.warning(f"⚠️ WEM file not found for duration check: {wem_file_path}")
+        return "N/A (WEM not found)"
+
+    duration = "N/A (Failed to parse)"
+
+    try:
+        # Run vgmstream-cli with the info flag (-i)
+        # The output contains metadata including duration
+        vgmstream_command = [VGMSTREAM_PATH, "-i", wem_file_path]
+        logging.debug(f"Running vgmstream-cli command: {' '.join(vgmstream_command)}") # Added debug log
+        vgmstream_output = run_command(vgmstream_command)
+        logging.debug(f"vgmstream-cli command finished for: {wem_file_path}") # Added debug log
+
+
+        if vgmstream_output is not None:
+            # Parse the output to find the duration line
+            match = DURATION_REGEX.search(vgmstream_output)
+            if match:
+                duration = match.group(1)
+                logging.debug(f"Successfully parsed duration for {os.path.basename(wem_file_path)}: {duration}") # Added debug log
+            else:
+                # Try the alternative regex if the first one fails
+                alt_match = ALT_DURATION_REGEX.search(vgmstream_output)
+                if alt_match:
+                    duration = alt_match.group(1)
+                    logging.debug(f"Successfully parsed duration (alt regex) for {os.path.basename(wem_file_path)}: {duration}") # Added debug log
+                else:
+                    logging.warning(f"⚠️ Could not find duration in vgmstream-cli output for {os.path.basename(wem_file_path)}. Please check the regex patterns in processing.py. Output segment:\n{vgmstream_output[:500]}...") # Log partial output
+                    duration = "N/A (Duration pattern not matched)"
+        else:
+            duration = "N/A (vgmstream-cli failed)"
+
+    except Exception as e:
+        logging.error(f"❌ An error occurred during vgmstream-cli processing for {os.path.basename(wem_file_path)}: {e}")
+        duration = "N/A (Processing Error)"
+
+    return duration
+
 
 def generate_mapping_from_json(json_dir, specific_folder=None):
     """
@@ -228,6 +335,7 @@ def list_ps4_wem_files(ps4_wem_dir):
     """
     Lists all .wem files within a given directory for the PS4 version,
     saving their relative paths to a JSON file.
+    (This function is now largely redundant with find_ps4_wem_duplicates but kept for completeness)
     """
     wem_files_list = []
     if not os.path.isdir(ps4_wem_dir):
@@ -241,7 +349,8 @@ def list_ps4_wem_files(ps4_wem_dir):
                 # Get the path relative to the input directory
                 relative_path = os.path.relpath(os.path.join(root, filename), ps4_wem_dir)
                 wem_files_list.append(relative_path)
-                # logging.info(f"Found: {relative_path}") # Reduced logging for brevity
+                logging.debug(f"Found: {relative_path}") # Changed to debug for less clutter
+
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(script_dir, "ps4_wem_list.json")
@@ -256,10 +365,11 @@ def find_ps4_wem_duplicates(ps4_wem_dir):
     """
     Finds and lists ALL .wem files within a given directory for the PS4 version,
     organized by specified folder types.
-    Outputs relative paths and lists all categories the file appears in.
+    Outputs relative paths, file size, duration, and lists all categories the file appears in.
+    Calculates duration using vgmstream-cli.
+    Includes cleanup for .wav files in the input directory.
     """
-    file_locations = defaultdict(list)
-    filename_all_categories = defaultdict(set) # To store all categories for each filename
+    file_info_by_filename = defaultdict(lambda: {"paths": [], "all_categories": set(), "size": 0, "duration": "N/A (Processing)"}) # Add size and duration processing status
     categorized_files = defaultdict(dict) # Use a dict for filenames within each category
 
     # Define the prefixes for categorization
@@ -275,70 +385,92 @@ def find_ps4_wem_duplicates(ps4_wem_dir):
         return
 
     logging.info(f"Scanning directory for PS4 WEM files: {ps4_wem_dir}")
+    wem_files_to_process = []
     for root, _, files in os.walk(ps4_wem_dir):
         for filename in files:
             if filename.lower().endswith(".wem"):
                 full_path = os.path.join(root, filename)
-                # Store the full path keyed by the filename
-                file_locations[filename].append(full_path)
-                logging.debug(f"Scanning: {full_path}") # Debug logging for each file found
+                relative_path = os.path.relpath(full_path, ps4_wem_dir)
 
-    # Determine all categories for each filename (whether duplicate or not)
-    all_filenames = list(file_locations.keys())
+                # Get file size
+                try:
+                    file_size = os.path.getsize(full_path)
+                except Exception as e:
+                    logging.warning(f"⚠️ Could not get size for {full_path}: {e}")
+                    file_size = 0 # Default to 0 if size cannot be obtained
 
-    logging.info(f"Found {len(all_filenames)} unique filenames.")
+                # Store info keyed by filename
+                file_info_by_filename[filename]["paths"].append(relative_path)
+                file_info_by_filename[filename]["size"] = file_size # Store size (assuming size is same for all instances, or take one)
 
-    logging.debug("Starting categorization and population of categorized_files...")
+                # Determine category for this specific path
+                parent_dir = os.path.basename(os.path.dirname(full_path))
+                matched_category = other_category
+                for prefix in folder_types:
+                    if parent_dir.lower().startswith(prefix.lower()):
+                        matched_category = prefix
+                        break
+                file_info_by_filename[filename]["all_categories"].add(matched_category)
+
+                wem_files_to_process.append(full_path) # Add file to list for duration processing
+
+                logging.debug(f"Scanning: {full_path} (Size: {file_size} bytes)")
+
+    # --- Process WEM files for duration using vgmstream-cli via ThreadPoolExecutor ---
+    logging.info(f"Starting WEM duration calculation using vgmstream-cli for {len(wem_files_to_process)} files...")
+    duration_results = {} # Store results {full_path: duration_string}
+
+    # Check if vgmstream-cli is available before starting the pool
+    if os.path.exists(VGMSTREAM_PATH):
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_wem = {executor.submit(get_wem_duration_vgmstream, wem_path): wem_path for wem_path in wem_files_to_process}
+
+            for future in as_completed(future_to_task):
+                wem_path = future_to_wem[future]
+                try:
+                    duration = future.result()
+                    duration_results[wem_path] = duration
+                    # logging.debug(f"Processed {os.path.basename(wem_path)}: Duration {duration}") # Moved to get_wem_duration_vgmstream
+                except Exception as e:
+                    logging.error(f"❌ Exception processing {os.path.basename(wem_path)} for duration: {e}")
+                    duration_results[wem_path] = "N/A (Processing Error)"
+    else:
+        logging.warning("⚠️ Skipping WEM duration calculation due to missing vgmstream-cli.exe at expected location.")
+        for wem_path in wem_files_to_process:
+             duration_results[wem_path] = "N/A (vgmstream-cli Missing)"
+    # ---------------------------------------------------------------------------------
+
+
+    # Populate the categorized_files structure with aggregated info and actual duration
+    all_filenames = list(file_info_by_filename.keys())
+    logging.debug("Populating categorized_files structure with duration...")
 
     for filename in all_filenames:
-        logging.debug(f"Processing filename for categorization: {filename}")
-        for path in file_locations[filename]:
-            parent_dir = os.path.basename(os.path.dirname(path))
-            matched_category = other_category # Default to Other
-            category_matched = False # Flag to check if any specific category matched
+        info = file_info_by_filename[filename]
+        all_categories_list = sorted(list(info["all_categories"])) # Get sorted list of all categories
 
-            logging.debug(f"  - Checking parent directory '{parent_dir}' for prefixes for file '{filename}'...")
-            for prefix in folder_types:
-                # Check if parent_dir starts with the prefix (case-insensitive)
-                logging.debug(f"    - Comparing '{parent_dir.lower()}' with prefix '{prefix.lower()}'")
-                if parent_dir.lower().startswith(prefix.lower()):
-                    matched_category = prefix # Use the original prefix casing for the category key
-                    category_matched = True
-                    logging.debug(f"    - Match found! Assigned Category: '{matched_category}' for path '{path}'")
-                    break # Found a match, no need to check other prefixes
-
-            filename_all_categories[filename].add(matched_category)
-            logging.debug(f"  - Path: {path}, Parent Dir: '{parent_dir}', Final Assigned Category for this path: '{matched_category}' (Matched: {category_matched})")
+        # Find the duration for this filename (assuming all instances have the same duration)
+        # We can take the duration from the first path found for this filename
+        duration_for_filename = "N/A"
+        if info["paths"]:
+            # Need to find the full path from the relative path to look up in duration_results
+            first_relative_path = info["paths"][0]
+            first_full_path = os.path.join(ps4_wem_dir, first_relative_path)
+            duration_for_filename = duration_results.get(first_full_path, "N/A (Lookup Error)")
 
 
-    # Populate the categorized_files structure with relative paths and all categories
-    logging.debug("Populating categorized_files structure...")
-    for filename in all_filenames:
-        all_categories_list = sorted(list(filename_all_categories[filename])) # Get sorted list of all categories
-        logging.debug(f"  - All categories for {filename}: {all_categories_list}")
-
-        for path in file_locations[filename]:
-            parent_dir = os.path.basename(os.path.dirname(path))
-            matched_category = other_category
-            for prefix in folder_types:
-                if parent_dir.lower().startswith(prefix.lower()):
-                    matched_category = prefix
-                    break
-
-            relative_path = os.path.relpath(path, ps4_wem_dir)
-
-            # Add the entry to the categorized_files structure
-            # The value for the filename will now be an object containing paths and all_categories
-            logging.debug(f"  - Attempting to add path '{relative_path}' for filename '{filename}' to category '{matched_category}'")
-            if filename not in categorized_files[matched_category]:
-                 logging.debug(f"    - Creating new entry for filename '{filename}' in category '{matched_category}'")
-                 categorized_files[matched_category][filename] = {
-                     "paths": [],
-                     "all_categories": all_categories_list # Add the list of all categories here
+        # For each category this filename belongs to, add an entry
+        for category in all_categories_list:
+             # Ensure the category exists in the output structure
+             if filename not in categorized_files[category]:
+                 categorized_files[category][filename] = {
+                     "paths": sorted(info["paths"]), # Store sorted paths
+                     "all_categories": all_categories_list,
+                     "size": info["size"], # Include size
+                     "duration": duration_for_filename # Include calculated duration
                  }
-            categorized_files[matched_category][filename]["paths"].append(relative_path)
-            logging.debug(f"  - Successfully added '{relative_path}' to category '{matched_category}' for filename '{filename}'")
-
+             # Note: If a file is in multiple categories, its entry (with all paths, size, duration)
+             # will appear under each relevant category key in categorized_files.
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(script_dir, "ps4_wem_analysis.json") # Changed output filename
@@ -366,5 +498,28 @@ def find_ps4_wem_duplicates(ps4_wem_dir):
         json.dump(sorted_categorized_files, f, indent=2)
 
     total_files_found = sum(len(files_data) for files_data in categorized_files.values())
-    logging.info(f"✅ PS4 WEM file analysis generated and saved to: {output_path} ({total_files_found} files categorized across {len(categorized_files)} categories).")
+    logging.info(f"✅ PS4 WEM file analysis generated and saved to: {output_path} ({total_files_found} unique filenames categorized across {len(categorized_files)} categories).")
+    logging.info("Note: Duration calculation attempted using vgmstream-cli.")
+
+    # --- Cleanup: Delete .wav files in the input directory ---
+    logging.info(f"Starting cleanup: Searching for and deleting .wav files in {ps4_wem_dir}...")
+    deleted_count = 0
+    try:
+        for root, _, files in os.walk(ps4_wem_dir):
+            for filename in files:
+                if filename.lower().endswith(".wav"):
+                    wav_file_path = os.path.join(root, filename)
+                    try:
+                        os.remove(wav_file_path)
+                        logging.debug(f"Deleted: {wav_file_path}")
+                        deleted_count += 1
+                    except OSError as e:
+                        logging.warning(f"⚠️ Failed to delete {wav_file_path}: {e}")
+                    except Exception as e:
+                        logging.warning(f"⚠️ An unexpected error occurred while deleting {wav_file_path}: {e}")
+        logging.info(f"✅ Cleanup finished. Deleted {deleted_count} .wav file(s).")
+    except Exception as e:
+        logging.error(f"❌ An error occurred during .wav file cleanup: {e}")
+    # --------------------------------------------------------
+
 
